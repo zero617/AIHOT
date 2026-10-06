@@ -1,14 +1,16 @@
 
-【AI 领域翻译规则 — 本平台 100% 是 AI/ML/LLM 行业内容，严格遵守】
+【领域翻译规则 — 本平台覆盖 AI + 科技生活（数码硬件/软件应用/游戏/影视/消费生活），严格遵守】
+
+**总原则**：先判断这个词在本文语境里属于哪个领域，再按对应规则处理。AI 术语按下面第1、2、3 节规则；消费电子品牌名、软件名、游戏名、影视作品名按第 5 节规则（保留原文）。
 
 1. 歧义默认值：以下词在中文有非 AI 歧义，**一律按 AI 含义翻译**：
    - LLM = 大语言模型（绝不译"法学硕士"/"Master of Laws"）
    - Token / tokens = 模型 token（保留英文；绝不译"代币"/"令牌"）
    - Transformer = Transformer 架构（保留英文；不译"变压器"）
    - Diffusion = 扩散模型（AI 生成，不是物理扩散）
-   - Agent / Agentic = AI 智能体 / 智能体的（不译"代理人"/"中介"）
+   - Agent / Agentic = AI 智能体 / 智能体的（不译"代理人"/"中介"）— 科技生活领域的"智能家居/智能门锁"不译成"智能体"，按产品名保留
    - Alignment = 对齐（AI 安全语境）
-   - Inference = 推理（模型生成）
+   - Inference = 推理（模型生成）— 但"推理小说""推理游戏"按内容类型处理，不译模型推理
    - Reasoning = 推理（注意：与 inference 都译"推理"，必要时用"链式推理"区分 CoT；reasoning model 指 o1/o3/R1 这类思考型模型）
    - Embedding = 嵌入向量（也可保留英文）
    - Distillation = 知识蒸馏
@@ -42,4 +44,15 @@
    - 命令如 /code-review、pip install、npm run 不译（不要译"代码审查"）
    - URL 原样
    - 数字+单位：8k context / 175B params / 3.5x speedup / $3 per M tokens / 99.9%
-   - 金额、参数量、比例、区间必须保留原文的阿拉伯数字和单位；不要把 $10B-$100B 改写成“数百亿至数千亿美元”等中文数量词
+   - 金额、参数量、比例、区间必须保留原文的阿拉伯数字和单位；不要把 $10B-$100B 改写成"数百亿至数千亿美元"等中文数量词
+
+5. **科技生活领域的专有名词同样保留原文**（与 AI 领域一致，不要硬译）：
+   - 消费电子与品牌：iPhone / iPad / Mac / Apple Watch / Vision Pro / AirPods / Galaxy / Pixel / Xiaomi / Redmi / 华为 Mate / Pura / 小米 / 荣耀 Magic / OPPO Find / vivo X / 一加 / realme / 尼康 / 索尼 / 佳能 / GoPro / Kindle / Steam Deck / Switch / PS5 / Xbox
+     **规则**：型号名（iPhone 18 Pro、Magic9、Find X8）一字不改，包括数字和后缀；"评测/体验/上手"是文章体裁，不是产品名
+   - 操作系统与软件：iOS / macOS / Windows / Android / HarmonyOS / 鸿蒙 / ColorOS / MIUI / OneUI / Linux / ChromeOS / SteamOS / Steam / Epic Games Store
+   - 硬件规格：骁龙 / 天玑 / 麒麟 / A系列 / M系列 / NPU / GPU / 内存 / 存储 / 刷新率 / 快充 / 电池容量
+     **规则**：规格数字保留原文（"5000mAh 电池""120Hz 刷新率"），不要换成中文数量词
+   - 游戏：游戏名一律保留原文（含中文游戏名的原译名，如《塞尔达传说：旷野之息》）；游戏平台与引擎 Unity / Unreal Engine / Steam / Epic / Switch
+   - 影视音乐：作品名、剧集名、专辑名保留原文（《黑镜》《沙丘》《流浪地球》）；流媒体平台 Netflix / Disney+ / Bilibili / 腾讯视频 / 爱奇艺 / 优酷 / Spotify / Apple Music
+   - 电商与生活：比价与团购平台、支付方式、快递与物流公司名保留原文（京东 / 淘宝 / 天猫 / 拼多多 / 唯品会 / 美团 / 闲鱼 / 支付宝 / 微信支付 / 顺丰 / 京东物流）
+   - **不要把科技生活内容往 AI 上靠**：iPhone 的处理器性能、相机影像、电池续航、机身工艺就是数码本身，不需要译成"端侧推理""多模态感知"；游戏玩法、影视剧情、消费决策也不套AI 术语

@@ -53,6 +53,24 @@ export default function SourceDetail({ loaderData }: Route.ComponentProps) {
   }
   const base = `/api/admin/sources/${encodeURIComponent(s.id)}`;
 
+  // Per-source proxy switch: writes config.useProxy, which the collectors read on every run.
+  const useProxy = (() => {
+    try { return (JSON.parse(draft.config) as Record<string, unknown>).useProxy !== false; } catch { return true; }
+  })();
+  const setUseProxy = (on: boolean) => {
+    let config: Record<string, unknown>;
+    try {
+      config = JSON.parse(draft.config) as Record<string, unknown>;
+      setConfigError(null);
+    } catch (e) {
+      setConfigError(`配置不是合法 JSON：${(e as Error).message}`);
+      return;
+    }
+    if (on) delete config.useProxy; // absent means "follow EGRESS_PROXY_URL"
+    else config.useProxy = false;
+    setDraft({ ...draft, config: JSON.stringify(config, null, 2) });
+  };
+
   const patch = (): Record<string, unknown> | null => {
     let config: unknown;
     try {
@@ -190,6 +208,16 @@ export default function SourceDetail({ loaderData }: Route.ComponentProps) {
                     {label}
                   </label>
                 ))}
+                <label className="inline-flex items-center gap-2" title="关闭后这个信源直连，不走 EGRESS_PROXY_URL">
+                  <input
+                    type="checkbox"
+                    className="size-4 accent-[var(--accent)]"
+                    checked={useProxy}
+                    onChange={(e) => setUseProxy(e.target.checked)}
+                  />
+                  采集走代理（EGRESS_PROXY_URL）
+                </label>
+                {!useProxy && <div className="text-[12px] text-ink-4">config.useProxy = false · 该信源直连</div>}
               </div>
             </div>
             <div className="mt-4">

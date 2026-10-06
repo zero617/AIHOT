@@ -6,6 +6,9 @@ x-app: &app
   build: .
   image: aihot-app
   restart: unless-stopped
+  # EGRESS_PROXY_URL 指向宿主机代理时需要：容器内 127.0.0.1 是容器自己。
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
 
 x-backend: &backend
   <<: *app
@@ -103,3 +106,6 @@ volumes:
   db: {}
   data: {}
   caddy: {}
+
+#===== 本机调试用：让局域网（手机等）也能访问后台 =====
+# TRUST_PROXY 只有在前面确实有反向代理时才开，站点直接对外时保持 false。

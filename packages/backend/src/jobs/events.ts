@@ -3,7 +3,7 @@ import type { PgBoss } from "pg-boss";
 import { groupArticle } from "../events/group.ts";
 import { composeStoryDigest } from "../events/digest.ts";
 import { settleNonEditorial } from "./content.ts";
-import { enqueue, ensureQueue, QUEUES, work } from "./queue.ts";
+import { enqueue, ensureQueue, llmConcurrency, QUEUES, work } from "./queue.ts";
 import { sql } from "../db.ts";
 
 export async function registerEventJobs(boss: PgBoss) {
@@ -17,7 +17,7 @@ export async function registerEventJobs(boss: PgBoss) {
     }
     return result;
   });
-  await work(boss, QUEUES.digest, { localConcurrency: 3, pollingIntervalSeconds: 5 }, ({ storyId }) => composeStoryDigest(storyId));
+  await work(boss, QUEUES.digest, { localConcurrency: llmConcurrency(3), pollingIntervalSeconds: 5 }, ({ storyId }) => composeStoryDigest(storyId));
 }
 
 /** Missing jobs are repaired; terminal failures need a receipt release or an explicit rerun. */

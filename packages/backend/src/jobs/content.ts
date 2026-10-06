@@ -12,7 +12,7 @@ import { isHistorical } from "../content/materials.ts";
 import { publishArticle } from "../publication/publish.ts";
 import { BudgetExceededError, ProviderRejectedError, ReceiptBusyError, ReceiptUnknownError } from "../providers/receipts.ts";
 import { ModelOutputError } from "../providers/llm.ts";
-import { enqueue, QUEUES, shutdownSignal, work } from "./queue.ts";
+import { enqueue, llmConcurrency, QUEUES, shutdownSignal, work } from "./queue.ts";
 
 /** Minutes to wait after the n-th failed attempt; one more failure after the last ends in "failed". */
 const RETRY_MINUTES = [5, 10, 20, 40, 60, 120, 240, 360];
@@ -185,7 +185,9 @@ async function afterFailure(articleId: string, revision: number, error: unknown)
 }
 
 export async function registerContentJobs(boss: PgBoss) {
-  await work(boss, QUEUES.analyze, { localConcurrency: 6, pollingIntervalSeconds: 2 }, ({ articleId, attemptTag }) => processArticle(articleId, { attemptTag }));
+  // Free-tier endpoints throttle per concurrency, not per total quota: too many in flight and every
+  // attempt burns a retry on HTTP 429, leaving the article stuck in 'new' with no attempts left.
+  await work(boss, QUEUES.analyze, { localConcurrency: llmConcurrency(6), pollingIntervalSeconds: 2 }, ({ articleId, attemptTag }) => processArticle(articleId, { attemptTag }));
 }
 
 /**

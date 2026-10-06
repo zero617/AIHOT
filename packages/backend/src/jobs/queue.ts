@@ -81,6 +81,15 @@ export async function getBoss(): Promise<PgBoss> {
 /** The longest single paid call (a translation batch, 180 s) plus margin; whatever stops the worker (systemd, Docker) waits longer. */
 export const STOP_TIMEOUT_MS = 195_000;
 
+/**
+ * How many LLM calls the worker may have in flight. Free-tier endpoints rate-limit per concurrency,
+ * so a site running on one needs a smaller number than a self-hosted or paid model does.
+ */
+export function llmConcurrency(fallback: number): number {
+  const raw = Number(process.env.LLM_CONCURRENCY);
+  return Number.isInteger(raw) && raw >= 1 && raw <= 16 ? raw : fallback;
+}
+
 export async function stopBoss(): Promise<void> {
   shutdownSignal.abort();
   if (boss) {

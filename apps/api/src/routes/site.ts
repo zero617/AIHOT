@@ -14,6 +14,7 @@ import { loadChangelog, siteMeta } from "@aihot/backend/site/meta";
 import { loadContact, loadMakerAvatar } from "@aihot/backend/site/contact";
 import { loadSiteStats } from "@aihot/backend/site/stats";
 import { itemAvailability } from "@aihot/backend/publication/availability";
+import { ensureHighlights, highlightState } from "@aihot/backend/content/highlights";
 import { listTopicSummaries, loadTopicPage, topicBrowseLinks } from "@aihot/backend/publication/topics";
 import { registerFeedback } from "./feedback.ts";
 import { loadHot, loadStoryDetail, resolveStory } from "@aihot/backend/publication/stories";
@@ -23,6 +24,23 @@ import { looseQuery, sendJsonWithEtag, sendProblem } from "../http/respond.ts";
 type Handler = (req: FastifyRequest, reply: FastifyReply) => Promise<unknown>;
 
 class BadRequest extends Error {}
+
+/**
+ * 同源判断，用于会花钱的写操作。
+ * Sec-Fetch-Site 是现代浏览器必带的，但 Safari较老版本和部分内嵌 WebView 不发；
+ * 所以缺失时退回 Origin/Referer 比对，两个都没有才拒绝。
+ */
+function sameSiteRequest(req: FastifyRequest): boolean {
+  const site = req.headers["sec-fetch-site"];
+  if (site) return site === "same-origin" || site === "same-site" || site === "none";
+  const origin = typeof req.headers.origin === "string" ? req.headers.origin : null;
+  if (!origin) return false;
+  try {
+    return new URL(origin).host === req.headers.host;
+  } catch {
+    return false;
+  }
+}
 
 export function siteHandler(fn: Handler): Handler {
   return async (req, reply) => {
@@ -90,6 +108,25 @@ export function registerSite(app: FastifyInstance) {
     const result = await loadItemDetail(id);
     if (result.kind === "not_found") return sendProblem(req, reply, { status: 404, code: "not_found", detail: "item not found", cacheControl: "public, max-age=60" });
     return sendJsonWithEtag(req, reply, result.item, { etagPrefix: "item", cacheControl: "public, max-age=60, s-maxage=60" });
+  }));
+
+  app.get("/api/site/items/:id/highlights", siteHandler(async (req, reply) => {
+    const id = (req.params as { id: string }).id;
+    if (!/^[a-zA-Z0-9_-]{1,80}$/.test(id)) return sendProblem(req, reply, { status: 404, code: "not_found", detail: "item not found" });
+    const state = await highlightState(id);
+    // ready 之外的态都会被前端反复轮询到，所以这些不能进 CDN/浏览器缓存。
+    const cacheControl = state.kind === "ready" ? "public, max-age=300, s-maxage=300" : "no-store";
+    return sendJsonWithEtag(req, reply, state, { etagPrefix: "highlights", cacheControl });
+  }));
+
+  // 触发生成。这是写操作（会花钱），所以只接受同源浏览器请求，并且靠ensureHighlights
+  // 的抢占保证并发下只有一条真正调用模型。
+  app.post("/api/site/items/:id/highlights", siteHandler(async (req, reply) => {
+    const id = (req.params as { id: string }).id;
+    if (!/^[a-zA-Z0-9_-]{1,80}$/.test(id)) return sendProblem(req, reply, { status: 404, code: "not_found", detail: "item not found" });
+    if (!sameSiteRequest(req)) return sendProblem(req, reply, { status: 403, code: "forbidden", detail: "same-origin only" });
+    const state = await ensureHighlights(id);
+    return reply.header("Cache-Control", "no-store").send(state);
   }));
 
   app.get("/api/site/items/:id/original", siteHandler(async (req, reply) => {

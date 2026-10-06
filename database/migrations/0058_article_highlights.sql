@@ -14,7 +14,3 @@ CREATE TABLE IF NOT EXISTS article_highlights (
   updated_at     timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT article_highlights_status_check CHECK (status IN ('pending', 'ready', 'failed'))
 );
-
-COMMENT ON TABLE article_highlights IS '要点透视：按分组整理的要点与高亮片段，供item 页阅读辅助';
-COMMENT ON COLUMN article_highlights.groups IS '[{key,name,icon,points:[{text,marks:[string]}]}]，仅 status=ready 时非空';
-COMMENT ON COLUMN article_highlights.status IS 'pending 生成中（插入即抢占，避免并发重复付费调用）/ ready 可用 / failed 失败可重试';

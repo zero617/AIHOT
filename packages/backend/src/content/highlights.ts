@@ -6,6 +6,7 @@
 import { z } from "zod";
 import { sql, type Tx } from "../db.ts";
 import { chatJson } from "../providers/llm.ts";
+import { modelFor } from "../editorial/models.ts";
 import { promptText, promptVersion } from "../editorial/prompts.ts";
 import { sha256 } from "../lib/ids.ts";
 
@@ -164,7 +165,7 @@ export async function ensureHighlights(articleId: string): Promise<HighlightStat
   try {
     const user = ["标题：", source.title, "", "正文：", source.body.slice(0, 24_000)].join("\n");
     const result = await chatJson({
-      model: "default",
+      model: await modelFor("highlights"),
       system: "",
       user: `${promptText("highlights")}\n\n${user}`,
       purpose: "highlights",

@@ -87,6 +87,15 @@ export class ModelOutputError extends Error {
   }
 }
 
+function fallbackModel(): string | null {
+  const configured = process.env.LLM_FALLBACK_MODEL ?? "minimax-m3";
+  return configured && MODELS[configured] && configured !== "none" ? configured : null;
+}
+
+function isFallbackFailure(error: unknown): boolean {
+  return error instanceof ProviderRejectedError && error.retryable;
+}
+
 function extractJson(text: string): unknown {
   let t = text.trim();
   const fence = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(t);
@@ -128,12 +137,22 @@ function isConnectFailure(error: unknown): boolean {
 }
 
 export async function chatJson<S extends z.ZodType>(opts: ChatJsonOptions<S>): Promise<ChatJsonResult<z.infer<S>>> {
-  const spec = MODELS[opts.model];
-  if (!spec) throw new Error(`Unknown model ${opts.model}`);
+  try {
+    return await chatJsonModel(opts, opts.model);
+  } catch (error) {
+    const fallback = fallbackModel();
+    if (!fallback || fallback === opts.model || !isFallbackFailure(error)) throw error;
+    return chatJsonModel({ ...opts, model: fallback, attemptTag: `fallback:${opts.model}` }, fallback);
+  }
+}
+
+async function chatJsonModel<S extends z.ZodType>(opts: ChatJsonOptions<S>, model: string): Promise<ChatJsonResult<z.infer<S>>> {
+  const spec = MODELS[model];
+  if (!spec) throw new Error(`Unknown model ${model}`);
   if (!config.modelCallsEnabled) throw new Error("Model calls are disabled (MODEL_CALLS_ENABLED=false)");
   const baseUrl = credential("models", spec.baseUrlEnv);
   const apiKey = credential("models", spec.apiKeyEnv);
-  if (!baseUrl || !apiKey || !spec.model) throw new Error(`Model ${opts.model} is not configured (${spec.baseUrlEnv}, ${spec.apiKeyEnv}${spec.key === "default" ? ", LLM_MODEL" : ""})`);
+  if (!baseUrl || !apiKey || !spec.model) throw new Error(`Model ${model} is not configured (${spec.baseUrlEnv}, ${spec.apiKeyEnv}${spec.key === "default" ? ", LLM_MODEL" : ""})`);
 
   const temperature = opts.temperature ?? 0.2;
   const maxTokens = Math.max(opts.maxTokens ?? 1500, 512) + (spec.reasoningTokens ?? 0);
@@ -165,7 +184,7 @@ export async function chatJson<S extends z.ZodType>(opts: ChatJsonOptions<S>): P
     async () => {
       const started = Date.now();
       // Frequency-limited endpoints reject the sixth call in a minute whatever the concurrency is.
-      await paceModelCall();
+      await paceModelCall(spec.key);
       let res: Response;
       try {
         res = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
@@ -209,7 +228,7 @@ export async function chatJson<S extends z.ZodType>(opts: ChatJsonOptions<S>): P
       ? `output token limit reached (finish_reason=length): a reasoning model may have spent it reasoning; give it room with ${spec.key === "default" ? "LLM_REASONING_TOKENS" : `reasoningTokens on preset ${spec.key}`}. ${String(error)}`
       : String(error);
     await rejectReceivedResponse(receipt.receiptId, `unusable output: ${detail.slice(0, 500)}`);
-    throw new ModelOutputError(`Model ${opts.model} returned unusable output for ${opts.subject}: ${detail.slice(0, 300)}`, receipt.receiptId);
+    throw new ModelOutputError(`Model ${model} returned unusable output for ${opts.subject}: ${detail.slice(0, 300)}`, receipt.receiptId);
   }
   return { data: parsed, receiptId: receipt.receiptId, reused: receipt.reused, model: spec.key, usage: response.usage ?? null };
 }

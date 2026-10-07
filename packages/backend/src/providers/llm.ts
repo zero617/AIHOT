@@ -7,6 +7,7 @@ import { PRESETS } from "@aihot/site/models";
 import { config, credential } from "../config.ts";
 import { sha256 } from "../lib/ids.ts";
 import { assertAccepted, paidRequest, ProviderRejectedError, rejectReceivedResponse } from "./receipts.ts";
+import { paceModelCall } from "./llm-pace.ts";
 
 export interface ModelSpec {
   key: string;
@@ -163,6 +164,8 @@ export async function chatJson<S extends z.ZodType>(opts: ChatJsonOptions<S>): P
     },
     async () => {
       const started = Date.now();
+      // Frequency-limited endpoints reject the sixth call in a minute whatever the concurrency is.
+      await paceModelCall();
       let res: Response;
       try {
         res = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {

@@ -20,10 +20,15 @@ export interface ModelPreset {
 /** 具名的模型示例（每个要配自己的密钥）。用不上可以删掉。 */
 export const PRESETS: Record<string, ModelPreset> = {
   // GLM 5.3 Flash always reasons; the lowest effort keeps short structured tasks fast.
+  "minimax-m3": {
+    service: "minimax-m3", model: "minimax-cn/MiniMax-M3", baseUrlEnv: "MINIMAX_M3_BASE_URL", apiKeyEnv: "MINIMAX_M3_API_KEY",
+    extra: { reasoning_effort: "minimal" }, jsonMode: true,
+  },
   "glm-5.3-flash": {
     service: "zhipu", model: "glm-5.3-flash", baseUrlEnv: "ZHIPU_BASE_URL", apiKeyEnv: "ZHIPU_API_KEY",
     extra: { thinking: { type: "enabled" }, reasoning_effort: "low" }, jsonMode: true, vision: true,
   },
+
   // The scorer's parameters for glm-5.3-flash (score calls; temperature 1 is set per call).
   "glm-5.3-flash-selection": {
     service: "zhipu", model: "glm-5.3-flash", baseUrlEnv: "ZHIPU_BASE_URL", apiKeyEnv: "ZHIPU_API_KEY",

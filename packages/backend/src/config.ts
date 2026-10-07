@@ -43,6 +43,13 @@ export const config = {
   siteUrl: str("SITE_URL", SITE.defaultUrl).replace(/\/+$/, ""),
   egressProxyUrl: env.EGRESS_PROXY_URL || null,
   allowPrivateNetworkFetch: bool("ALLOW_PRIVATE_NETWORK_FETCH", false),
+  /**
+   * Hosts exempt from the private-address guard, as exact hostnames or IP literals only ("192.168.1.104",
+   * "werss.example.com"). No wildcards and no CIDR: a name that resolves into a private range is
+   * reachable, anything else a source points at is still refused. Lets a collector read an RSS bridge
+   * on the LAN in production, where ALLOW_PRIVATE_NETWORK_FETCH refuses to start.
+   */
+  privateNetworkAllowHosts: (env.EGRESS_ALLOW_PRIVATE_HOSTS || "").split(",").map((h) => h.trim().toLowerCase()).filter(Boolean),
   feishuContentPushEnabled: bool("FEISHU_CONTENT_PUSH_ENABLED", false),
   indexNowSubmitEnabled: bool("INDEXNOW_SUBMIT_ENABLED", false),
   /** IndexNow key (32 hex characters); without one nothing is submitted and no key file is served. */

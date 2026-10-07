@@ -1,6 +1,7 @@
 // URL normalisation for material identity, and the fetcher's network guard.
 import { lookup } from "node:dns/promises";
 import net from "node:net";
+import { config } from "../config.ts";
 
 const TRACKING_PARAMS = /^(utm_[a-z]+|spm|from|ref|ref_src|ref_url|source|share_source|share_token|fbclid|gclid|igshid|mc_cid|mc_eid|_hsenc|_hsmi|scene|chksm|sessionid|srcid|clicktime|enterid|mkt_tok)$/i;
 
@@ -142,6 +143,15 @@ function blockedHostname(host: string): boolean {
 }
 
 /**
+ * EGRESS_ALLOW_PRIVATE_HOSTS entries, matched exactly (lowercase host or IP literal). Deliberately no
+ * suffix or wildcard matching: "example.com" must not exempt "evil.example.com" or a name that
+ * resolves elsewhere, and an entry must not quietly cover a whole LAN.
+ */
+function privateHostAllowed(host: string): boolean {
+  return config.privateNetworkAllowHosts.includes(host);
+}
+
+/**
  * Rejects non-HTTP URLs and private destinations. Direct requests check the system DNS again at
  * connect time; proxy requests supply their outbound resolver and pin its answer in the tunnel.
  * Only local debugging may disable the guard via ALLOW_PRIVATE_NETWORK_FETCH.
@@ -151,12 +161,16 @@ export async function assertPublicUrl(url: string, allowPrivate = false, resolve
   if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error(`Blocked protocol ${u.protocol}`);
   if (allowPrivate) return u;
   const host = u.hostname.replace(/^\[|\]$/g, "").toLowerCase();
-  if (blockedHostname(host)) throw new Error(`Blocked host ${host}`);
+  // An operator-named host is reachable even when it resolves onto the LAN; the rest still may not be.
+  const exempt = privateHostAllowed(host);
+  if (!exempt && blockedHostname(host)) throw new Error(`Blocked host ${host}`);
   const literal = net.isIP(host) !== 0;
   const addresses = literal ? [{ address: host }] : resolve ? (await resolve(host)).map((address) => ({ address })) : await lookup(host, { all: true });
   if (addresses.length === 0) throw new Error(`No address for ${host}`);
-  for (const { address } of addresses) {
-    if (isBlockedAddress(address)) throw new Error(`Blocked private address for ${host}`);
+  if (!exempt) {
+    for (const { address } of addresses) {
+      if (isBlockedAddress(address)) throw new Error(`Blocked private address for ${host}`);
+    }
   }
   return u;
 }
@@ -169,7 +183,15 @@ type LookupCallback = (err: NodeJS.ErrnoException | null, address: string | Arra
  */
 export function guardedLookup(hostname: string, options: { all?: boolean; family?: number } | number, callback: LookupCallback): void {
   const opts = typeof options === "number" ? { family: options } : options;
-  if (blockedHostname(hostname.toLowerCase())) {
+  const name = hostname.toLowerCase();
+  if (privateHostAllowed(name)) {
+    lookup(name, { all: true, family: opts.family ?? 0 }).then(
+      (list) => (opts.all ? callback(null, list as never) : callback(null, list[0]?.address ?? "", opts.family ?? 4)),
+      (error) => callback(error, opts.all ? [] : "", 0),
+    );
+    return;
+  }
+  if (blockedHostname(name)) {
     callback(Object.assign(new Error(`Blocked host ${hostname}`), { code: "EBLOCKED" }), opts.all ? [] : "", 0);
     return;
   }

@@ -172,7 +172,7 @@ export async function ensureHighlights(articleId: string): Promise<HighlightStat
       subject: `article:${articleId}`,
       promptVersion: promptVersion("highlights"),
       schema: Shape,
-      maxTokens: 2000,
+      maxTokens: 6000,
     });
     const groups = normalize(result.data.groups);
     // groups 为空也标 ready（空数组）：前端据此隐藏区块，且不会反复重试同一篇。

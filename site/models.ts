@@ -21,8 +21,10 @@ export interface ModelPreset {
 export const PRESETS: Record<string, ModelPreset> = {
   // GLM 5.3 Flash always reasons; the lowest effort keeps short structured tasks fast.
   "minimax-m3": {
-    service: "minimax-m3", model: "minimax-cn/MiniMax-M3", baseUrlEnv: "MINIMAX_M3_BASE_URL", apiKeyEnv: "MINIMAX_M3_API_KEY",
-    extra: { reasoning_effort: "minimal" }, jsonMode: true,
+    service: "minimax-m3", model: "MiniMax-M3.1-Flash-Preview", baseUrlEnv: "MINIMAX_M3_BASE_URL", apiKeyEnv: "MINIMAX_M3_API_KEY",
+    // It reasons before answering, and the thinking block is billed against max_tokens: without room
+    // here the answer gets cut off and the step fails with "no JSON object in model output".
+    reasoningTokens: 8000, jsonMode: true,
   },
   "glm-5.3-flash": {
     service: "zhipu", model: "glm-5.3-flash", baseUrlEnv: "ZHIPU_BASE_URL", apiKeyEnv: "ZHIPU_API_KEY",
@@ -41,7 +43,7 @@ export const PRESETS: Record<string, ModelPreset> = {
     extra: { thinking: { type: "disabled" } }, jsonMode: true,
   },
   "deepseek-flash-think": {
-    service: "deepseek", model: "deepseek-flash", baseUrlEnv: "DEEPSEEK_BASE_URL", apiKeyEnv: "DEEPSEEK_API_KEY", reasoningTokens: 4000, jsonMode: true,
+    service: "deepseek", model: "deepseek-flash", baseUrlEnv: "DEEPSEEK_BASE_URL", apiKeyEnv: "DEEPSEEK_API_KEY", reasoningTokens: 8000, jsonMode: true,
   },
   "qwen3.7-flash": {
     service: "dashscope", model: "qwen3.7-flash", baseUrlEnv: "DASHSCOPE_BASE_URL", apiKeyEnv: "DASHSCOPE_API_KEY",

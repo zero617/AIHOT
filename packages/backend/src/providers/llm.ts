@@ -136,6 +136,31 @@ function isConnectFailure(error: unknown): boolean {
   return ["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "UND_ERR_CONNECT_TIMEOUT", "CERT_HAS_EXPIRED"].includes(code ?? "");
 }
 
+/**
+ * Some OpenAI-compatible gateways answer with a mixed body: a plain JSON completion followed by SSE
+ * trailers (`data: [DONE]`). Try the whole body first, then fall back to reading `data:` frames.
+ */
+function parseCompletion(text: string): Record<string, unknown> {
+  const trimmed = text.trim();
+  try {
+    const whole = JSON.parse(trimmed);
+    if (whole && typeof whole === "object" && !Array.isArray(whole)) return whole as Record<string, unknown>;
+  } catch {
+    // Not a bare JSON body; look for a streamed frame below.
+  }
+  for (const line of trimmed.split("\n")) {
+    const payload = line.trim().startsWith("data:") ? line.trim().slice(5).trim() : "";
+    if (!payload || payload === "[DONE]") continue;
+    try {
+      const parsed = JSON.parse(payload);
+      if (parsed && typeof parsed === "object") return parsed as Record<string, unknown>;
+    } catch {
+      // A partial or non-JSON frame: keep looking.
+    }
+  }
+  throw new Error("No JSON frame in a streamed completion");
+}
+
 export async function chatJson<S extends z.ZodType>(opts: ChatJsonOptions<S>): Promise<ChatJsonResult<z.infer<S>>> {
   try {
     return await chatJsonModel(opts, opts.model);
@@ -201,7 +226,7 @@ async function chatJsonModel<S extends z.ZodType>(opts: ChatJsonOptions<S>, mode
       assertAccepted(spec.service, res.status, text);
       let json: Record<string, unknown>;
       try {
-        json = JSON.parse(text);
+        json = parseCompletion(text);
         if (!json || typeof json !== "object" || Array.isArray(json)) throw new Error("Expected a response object");
       } catch {
         json = { unparsable: text.slice(0, 20000) };

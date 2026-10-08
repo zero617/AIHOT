@@ -232,12 +232,15 @@ export async function registerExtractionJobs(boss: PgBoss) {
  * (pg-boss refuses the duplicate while it still exists). Returns the jobs actually created.
  */
 export async function sweepUnprocessed(): Promise<{ enqueued: number }> {
+  // A paused source's articles keep their state but stop consuming model quota: they come back on
+  // their own when the source is enabled again.
   const rows = await sql<{ id: string }[]>`
-    SELECT id FROM articles
-    WHERE processing_state = 'new' AND created_at < now() - interval '3 minutes'
-      AND (processing_retry_at IS NULL OR processing_retry_at <= now())
-      AND (processing_queued_at IS NULL OR processing_queued_at < now() - ${QUEUED_STALE}::interval)
-    ORDER BY discovered_at DESC LIMIT 500`;
+    SELECT a.id FROM articles a JOIN sources s ON s.id = a.source_id
+    WHERE a.processing_state = 'new' AND a.created_at < now() - interval '3 minutes'
+      AND s.enabled
+      AND (a.processing_retry_at IS NULL OR a.processing_retry_at <= now())
+      AND (a.processing_queued_at IS NULL OR a.processing_queued_at < now() - ${QUEUED_STALE}::interval)
+    ORDER BY a.discovered_at DESC LIMIT 500`;
   let enqueued = 0;
   for (const r of rows) if (await queueProcessing(r.id)) enqueued += 1;
   return { enqueued };

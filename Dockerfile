@@ -3,7 +3,11 @@
 FROM node:24-trixie-slim AS base
 WORKDIR /app
 # pg_dump for the optional database backups (Debian's client matches the PostgreSQL 17 server in compose).
-RUN apt-get update \
+# APT_MIRROR: the default deb.debian.org resolves abroad, so an apt-get behind a rules-mode proxy can hang
+# for tens of minutes on install. Point it at a reachable mirror; pass an empty value to keep the default.
+ARG APT_MIRROR=mirrors.tuna.tsinghua.edu.cn
+RUN sed -i "s|^URIs: http://deb.debian.org|URIs: http://${APT_MIRROR}|g" /etc/apt/sources.list.d/debian.sources \
+ && apt-get update \
  && apt-get install -y --no-install-recommends postgresql-client ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 

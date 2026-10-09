@@ -3,9 +3,11 @@
 // site, an environment variable or the admin's model page picks one of the site's named presets
 // (site/models.ts).
 import type { z } from "zod";
+import { fetch as undiciFetch, type Dispatcher } from "undici";
 import { PRESETS } from "@aihot/site/models";
 import { config, credential } from "../config.ts";
 import { sha256 } from "../lib/ids.ts";
+import { createEgressProxy, createEgressResolver } from "../lib/egress-proxy.ts";
 import { assertAccepted, paidRequest, ProviderRejectedError, rejectReceivedResponse } from "./receipts.ts";
 import { paceModelCall } from "./llm-pace.ts";
 
@@ -136,6 +138,17 @@ function isConnectFailure(error: unknown): boolean {
   return ["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "UND_ERR_CONNECT_TIMEOUT", "CERT_HAS_EXPIRED"].includes(code ?? "");
 }
 
+// A model endpoint reached through the egress proxy leaves from the proxy's address, not this host's.
+// Free tiers meter per source address, so a deployment whose own IPv4 pool is exhausted can still work
+// when the same call goes out through the proxy. ponytail: no per-model opt-out; drop EGRESS_PROXY_URL
+// to send model calls direct again.
+let modelProxy: Dispatcher | null = null;
+function modelDispatcher(): Dispatcher | undefined {
+  if (!config.egressProxyUrl) return undefined;
+  modelProxy ??= createEgressProxy(config.egressProxyUrl, createEgressResolver(config.egressProxyUrl));
+  return modelProxy;
+}
+
 /**
  * Some OpenAI-compatible gateways answer with a mixed body: a plain JSON completion followed by SSE
  * trailers (`data: [DONE]`). Try the whole body first, then fall back to reading `data:` frames.
@@ -212,12 +225,13 @@ async function chatJsonModel<S extends z.ZodType>(opts: ChatJsonOptions<S>, mode
       await paceModelCall(spec.key);
       let res: Response;
       try {
-        res = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
+        res = await undiciFetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
           method: "POST",
           headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
           body: JSON.stringify(body),
           signal: AbortSignal.timeout(opts.timeoutMs ?? 120_000),
-        });
+          dispatcher: modelDispatcher(),
+        } as Parameters<typeof undiciFetch>[1]);
       } catch (error) {
         if (isConnectFailure(error)) throw new ProviderRejectedError(`connect failed: ${String(error)}`, null, true);
         throw error;

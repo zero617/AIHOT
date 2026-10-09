@@ -20,6 +20,10 @@ export interface ModelPreset {
 /** 具名的模型示例（每个要配自己的密钥）。用不上可以删掉。 */
 export const PRESETS: Record<string, ModelPreset> = {
   // GLM 5.3 Flash always reasons; the lowest effort keeps short structured tasks fast.
+  "qd-dfmodel": {
+    service: "qd-dfmodel", model: "qd/dfmodel", baseUrlEnv: "QD_DFMODEL_BASE_URL", apiKeyEnv: "QD_DFMODEL_API_KEY",
+    jsonMode: true,
+  },
   "minimax-m3": {
     service: "minimax-m3", model: "MiniMax-M3.1-Flash-Preview", baseUrlEnv: "MINIMAX_M3_BASE_URL", apiKeyEnv: "MINIMAX_M3_API_KEY",
     // It reasons before answering, and the thinking block is billed against max_tokens: without room

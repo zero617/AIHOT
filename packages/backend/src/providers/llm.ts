@@ -89,9 +89,39 @@ export class ModelOutputError extends Error {
   }
 }
 
-function fallbackModel(): string | null {
+function parseModelList(value: string | undefined): string[] {
+  return (value ?? "")
+    .split(",")
+    .map((name) => name.trim())
+    .filter((name) => name && name !== "none" && MODELS[name] !== undefined);
+}
+
+/**
+ * Models that share the work, tried in rotation so a rate-limited endpoint backs off while the
+ * others answer. LLM_MODEL_POOL lists them; without it the requested model is the only one.
+ */
+function primaryPool(): string[] {
+  const pool = parseModelList(process.env.LLM_MODEL_POOL);
+  return pool.length > 0 ? pool : [];
+}
+
+// Round-robin so consecutive calls spread over the pool instead of hammering its first entry.
+let poolCursor = 0;
+function nextPrimary(primary: string): string[] {
+  const pool = primaryPool().filter((name) => name !== primary);
+  if (pool.length === 0) return [primary];
+  const start = poolCursor % pool.length;
+  poolCursor = (poolCursor + 1) % pool.length;
+  return [...pool.slice(start), ...pool.slice(0, start), primary];
+}
+
+/**
+ * Models to try after the pool failed, in order. LLM_FALLBACK_MODEL holds a comma-separated chain
+ * so several endpoints can cover each other; "none" or an empty value turns the chain off.
+ */
+function fallbackModels(): string[] {
   const configured = process.env.LLM_FALLBACK_MODEL ?? "minimax-m3";
-  return configured && MODELS[configured] && configured !== "none" ? configured : null;
+  return parseModelList(configured);
 }
 
 function isFallbackFailure(error: unknown): boolean {
@@ -175,13 +205,20 @@ function parseCompletion(text: string): Record<string, unknown> {
 }
 
 export async function chatJson<S extends z.ZodType>(opts: ChatJsonOptions<S>): Promise<ChatJsonResult<z.infer<S>>> {
-  try {
-    return await chatJsonModel(opts, opts.model);
-  } catch (error) {
-    const fallback = fallbackModel();
-    if (!fallback || fallback === opts.model || !isFallbackFailure(error)) throw error;
-    return chatJsonModel({ ...opts, model: fallback, attemptTag: `fallback:${opts.model}` }, fallback);
+  const tried = new Set<string>();
+  let lastError: unknown;
+  // Pool first (rotating so several endpoints share the load), then the fallback chain.
+  for (const model of [...nextPrimary(opts.model), ...fallbackModels()]) {
+    if (tried.has(model)) continue;
+    tried.add(model);
+    try {
+      return await chatJsonModel({ ...opts, model, attemptTag: model === opts.model ? opts.attemptTag : `fallback:${opts.model}` }, model);
+    } catch (error) {
+      if (!isFallbackFailure(error)) throw error;
+      lastError = error;
+    }
   }
+  throw lastError ?? new Error(`no model available for ${opts.model}`);
 }
 
 async function chatJsonModel<S extends z.ZodType>(opts: ChatJsonOptions<S>, model: string): Promise<ChatJsonResult<z.infer<S>>> {

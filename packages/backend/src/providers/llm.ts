@@ -2,6 +2,7 @@
 // deployment names in LLM_BASE_URL / LLM_API_KEY / LLM_MODEL, and every capability uses it unless the
 // site, an environment variable or the admin's model page picks one of the site's named presets
 // (site/models.ts).
+import net from "node:net";
 import type { z } from "zod";
 import { fetch as undiciFetch, type Dispatcher } from "undici";
 import { PRESETS } from "@aihot/site/models";
@@ -170,11 +171,15 @@ function isConnectFailure(error: unknown): boolean {
 
 // A model endpoint reached through the egress proxy leaves from the proxy's address, not this host's.
 // Free tiers meter per source address, so a deployment whose own IPv4 pool is exhausted can still work
-// when the same call goes out through the proxy. ponytail: no per-model opt-out; drop EGRESS_PROXY_URL
-// to send model calls direct again.
+// when the same call goes out through the proxy. An endpoint the operator runs on the LAN (an
+// EGRESS_ALLOW_PRIVATE_HOSTS entry, or an IP literal) is the opposite case: the proxy resolves it and
+// then refuses the private address, so those go direct. ponytail: no per-model opt-out; drop
+// EGRESS_PROXY_URL to send model calls direct again.
 let modelProxy: Dispatcher | null = null;
-function modelDispatcher(): Dispatcher | undefined {
+function modelDispatcher(baseUrl: string): Dispatcher | undefined {
   if (!config.egressProxyUrl) return undefined;
+  const host = new URL(baseUrl).hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  if (net.isIP(host) !== 0 || config.privateNetworkAllowHosts.includes(host)) return undefined;
   modelProxy ??= createEgressProxy(config.egressProxyUrl, createEgressResolver(config.egressProxyUrl));
   return modelProxy;
 }
@@ -234,6 +239,9 @@ async function chatJsonModel<S extends z.ZodType>(opts: ChatJsonOptions<S>, mode
   const userText = typeof opts.user === "string" ? opts.user : JSON.stringify(opts.user);
   const body: Record<string, unknown> = {
     model: spec.model,
+    // The body is read in one piece below, so ask for a whole completion: some gateways stream by
+    // default regardless, and their first delta frame carries no content to parse.
+    stream: false,
     messages: [
       // A prompt given as one user message (the title/summary prompts) has no system message.
       ...(opts.system ? [{ role: "system", content: opts.system }] : []),
@@ -267,7 +275,7 @@ async function chatJsonModel<S extends z.ZodType>(opts: ChatJsonOptions<S>, mode
           headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
           body: JSON.stringify(body),
           signal: AbortSignal.timeout(opts.timeoutMs ?? 120_000),
-          dispatcher: modelDispatcher(),
+          dispatcher: modelDispatcher(baseUrl),
         } as Parameters<typeof undiciFetch>[1]);
       } catch (error) {
         if (isConnectFailure(error)) throw new ProviderRejectedError(`connect failed: ${String(error)}`, null, true);

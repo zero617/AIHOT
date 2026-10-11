@@ -174,6 +174,21 @@ test("a lost pending grouping job is repaired once, but a terminal failure waits
   assert.deepEqual({ ...manual }, { grouping_status: "complete", grouping_error: null });
 });
 
+// A paused source keeps its state but stops consuming model quota, as content.sweep already does for
+// analysis. Grouping is a model call too, so the repair must skip the source until it is enabled.
+test("a paused source's pending grouping job is not repaired until the source is enabled again", async () => {
+  const id = await report("paused-source");
+  await sql`UPDATE articles SET created_at=now()-interval '5 minutes' WHERE id=${id}`;
+  await sql`UPDATE sources SET enabled=false,health='paused' WHERE id=${sourceId}`;
+  assert.equal((await sweepUngrouped()).enqueued, 0);
+  await sql`UPDATE sources SET enabled=true,health='unknown' WHERE id=${sourceId}`;
+  assert.equal((await sweepUngrouped()).enqueued, 1);
+  const boss = await getBoss();
+  const jobs = await boss.fetch(QUEUES.group);
+  assert.deepEqual(jobs.map((job) => (job.data as { articleId: string }).articleId), [id]);
+  for (const job of jobs) await boss.complete(QUEUES.group, job.id);
+});
+
 
 // Failure modes: a report changes while its old model response is in flight; neither the old answer
 // nor a late timeout may complete or fail the replacement revision.

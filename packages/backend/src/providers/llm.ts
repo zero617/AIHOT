@@ -4,7 +4,7 @@
 // (site/models.ts).
 import net from "node:net";
 import type { z } from "zod";
-import { fetch as undiciFetch, type Dispatcher } from "undici";
+import { request as undiciRequest, type Dispatcher } from "undici";
 import { PRESETS } from "@aihot/site/models";
 import { config, credential } from "../config.ts";
 import { sha256 } from "../lib/ids.ts";
@@ -268,21 +268,21 @@ async function chatJsonModel<S extends z.ZodType>(opts: ChatJsonOptions<S>, mode
       const started = Date.now();
       // Frequency-limited endpoints reject the sixth call in a minute whatever the concurrency is.
       await paceModelCall(spec.key);
-      let res: Response;
+      let res: Awaited<ReturnType<typeof undiciRequest>>;
       try {
-        res = await undiciFetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
+        res = await undiciRequest(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
           method: "POST",
           headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
           body: JSON.stringify(body),
           signal: AbortSignal.timeout(opts.timeoutMs ?? 120_000),
           dispatcher: modelDispatcher(baseUrl),
-        } as Parameters<typeof undiciFetch>[1]);
+        });
       } catch (error) {
         if (isConnectFailure(error)) throw new ProviderRejectedError(`connect failed: ${String(error)}`, null, true);
         throw error;
       }
-      const text = await res.text();
-      assertAccepted(spec.service, res.status, text);
+      const text = await res.body.text();
+      assertAccepted(spec.service, res.statusCode, text);
       let json: Record<string, unknown>;
       try {
         json = parseCompletion(text);
@@ -293,7 +293,7 @@ async function chatJsonModel<S extends z.ZodType>(opts: ChatJsonOptions<S>, mode
       const usage = (json.usage as Record<string, unknown> | undefined) ?? null;
       return {
         response: { ...json, _latencyMs: Date.now() - started },
-        requestId: (json.id as string | undefined) ?? res.headers.get("x-request-id"),
+        requestId: (json.id as string | undefined) ?? (res.headers["x-request-id"] as string | undefined),
         usage,
         cost: null,
       };

@@ -19,6 +19,13 @@ export interface ModelPreset {
 
 /** 具名的模型示例（每个要配自己的密钥）。用不上可以删掉。 */
 export const PRESETS: Record<string, ModelPreset> = {
+  // Self-hosted on the NAS. The gateway has two realms: cn: is backed by three healthy accounts,
+  // global: by one that the gateway reports unhealthy, so requests must ask for cn:. It reasons
+  // before answering, so reasoning_effort: none keeps the answer inside its token budget.
+  "hy4-preview": {
+    service: "hy4-preview", model: "cn:hy4-preview-f", baseUrlEnv: "HY4_BASE_URL", apiKeyEnv: "HY4_API_KEY",
+    extra: { reasoning_effort: "none" }, reasoningTokens: 8000, jsonMode: true,
+  },
   "minimax-m3": {
     service: "minimax-m3", model: "MiniMax-M3.1-Flash-Preview", baseUrlEnv: "MINIMAX_M3_BASE_URL", apiKeyEnv: "MINIMAX_M3_API_KEY",
     // It reasons before answering, and the thinking block is billed against max_tokens: without room

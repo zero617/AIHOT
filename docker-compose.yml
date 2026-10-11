@@ -9,6 +9,8 @@ x-app: &app
   # EGRESS_PROXY_URL 指向宿主机代理时需要：容器内 127.0.0.1 是容器自己。
   extra_hosts:
     - "host.docker.internal:host-gateway"
+    # 自建网关只在局域网可达，容器 DNS 问不到它的 A 记录（只给 AAAA，容器没有 IPv6 出口）。
+    - "app-20128.zero617.fun:192.168.1.104"
 
 x-backend: &backend
   <<: *app

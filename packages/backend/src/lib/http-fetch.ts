@@ -1,7 +1,7 @@
 // Outbound HTTP for collectors, the image proxy and the paid APIs: SSRF guard, routing, limits.
 import net from "node:net";
 import { addAbortListener } from "node:events";
-import { Agent, Pool, ProxyAgent, fetch as undiciFetch, type Dispatcher } from "undici";
+import { Agent, Pool, ProxyAgent, request as undiciRequest, type Dispatcher } from "undici";
 import { config } from "../config.ts";
 import { assertPublicUrl, guardedLookup } from "./url.ts";
 import { createEgressProxy, createEgressResolver, OUTBOUND_HTTP_OPTIONS } from "./egress-proxy.ts";
@@ -93,22 +93,46 @@ export async function guardedFetch(input: string, opts: GuardedFetchOptions = {}
   let method = (opts.method ?? "GET").toUpperCase();
   let requestBody = opts.body;
   for (let hop = 0; ; hop++) {
-    const res = await undiciFetch(url, {
+    // dispatcher.request() rather than fetch(dispatcher): undici's fetch path rejects a Client
+    // whose connect() is overridden (PinnedProxyClient) with "invalid onRequestStart method" before
+    // any bytes hit the wire. request() takes the same dispatch path through the pinned tunnel.
+    const viaProxy = proxied(url, route);
+    const dispatcher = dispatcherFor(viaProxy);
+    const outbound = {
       method,
-      headers: Object.fromEntries(headers),
+      headers: Object.fromEntries(headers) as Record<string, string>,
       body: requestBody,
-      redirect: "manual",
-      dispatcher: dispatcherFor(proxied(url, route)),
       signal,
-    });
-    if ([301, 302, 303, 307, 308].includes(res.status) && res.headers.get("location")) {
+    };
+    let res: Awaited<ReturnType<typeof undiciRequest>>;
+    try {
+      res = dispatcher
+        ? await dispatcher.request({ origin: url.origin, path: `${url.pathname}${url.search}`, ...outbound })
+        : await undiciRequest(url, { ...outbound, dispatcher });
+    } catch (error) {
+      // fetch() reported transport failures as TypeError(cause); request() throws them raw. Callers
+      // and the retry predicate read the socket error off `cause`, so keep that shape — but an abort
+      // reason (a DOMException) is passed through untouched, as fetch did.
+      if (error instanceof Error && !(error instanceof DOMException) && error.cause === undefined) {
+        throw new TypeError(error.message, { cause: error });
+      }
+      throw error;
+    }
+    // request() hands back undici's own response shape, not fetch's: statusCode plus an
+    // IncomingHttpHeaders record instead of a Headers object.
+    const status = res.statusCode;
+    const headerGet = (name: string) => {
+      const value = res.headers[name];
+      return (Array.isArray(value) ? value[0] : value) ?? null;
+    };
+    if ([301, 302, 303, 307, 308].includes(status) && headerGet("location")) {
       // Release the connection even when the next URL is refused or the redirect limit is reached.
-      await res.body?.cancel();
+      await res.body.dump();
       if (hop >= maxRedirects) throw new Error("Too many redirects");
-      const next = new URL(res.headers.get("location")!, url);
+      const next = new URL(headerGet("location")!, url);
       if (originBound && next.origin !== initialOrigin) throw new Error("Blocked cross-origin redirect for a protected request");
       url = await check(next.toString());
-      if (((res.status === 301 || res.status === 302) && method === "POST") || (res.status === 303 && method !== "GET" && method !== "HEAD")) {
+      if (((status === 301 || status === 302) && method === "POST") || (status === 303 && method !== "GET" && method !== "HEAD")) {
         method = "GET";
         requestBody = undefined;
         for (const name of ["content-encoding", "content-language", "content-location", "content-type", "content-length"]) headers.delete(name);
@@ -117,20 +141,24 @@ export async function guardedFetch(input: string, opts: GuardedFetchOptions = {}
     }
     const chunks: Buffer[] = [];
     let size = 0;
-    if (res.body) {
-      for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
-        size += chunk.byteLength;
-        if (size > maxBytes) throw new Error(`Response too large from ${url.hostname}`);
-        chunks.push(Buffer.from(chunk));
+    for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
+      size += chunk.byteLength;
+      if (size > maxBytes) {
+        await res.body.dump().catch(() => {});
+        throw new Error(`Response too large from ${url.hostname}`);
       }
+      chunks.push(Buffer.from(chunk));
     }
     const body = Buffer.concat(chunks);
     return {
-      status: res.status,
+      status,
       url: url.toString(),
-      headers: res.headers as unknown as Headers,
+      headers: new Headers(
+        Object.entries(res.headers).flatMap(([name, value]) =>
+          value === undefined ? [] : (Array.isArray(value) ? value : [value]).map((one): [string, string] => [name, one])),
+      ),
       body,
-      text: () => decodeBody(body, res.headers.get("content-type")),
+      text: () => decodeBody(body, headerGet("content-type")),
     };
   }
 }

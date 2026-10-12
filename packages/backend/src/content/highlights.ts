@@ -173,6 +173,10 @@ export async function ensureHighlights(articleId: string): Promise<HighlightStat
       promptVersion: promptVersion("highlights"),
       schema: Shape,
       maxTokens: 6000,
+      // 要点透视的 prompt 带整篇正文，推理模型在长文上要 1.5–3 分钟：默认 120s 会在
+      // step-5-preview / hy3 上稳定超时，把回执留成 unknown 挡住下一次重试。给足 5 分钟，
+      // 超了才算真失败（前端只轮询 2 分钟，但 pending 态留给下一个读者再触发）。
+      timeoutMs: 300_000,
     });
     const groups = normalize(result.data.groups);
     // groups 为空也标 ready（空数组）：前端据此隐藏区块，且不会反复重试同一篇。

@@ -27,6 +27,12 @@ export const PRESETS: Record<string, ModelPreset> = {
     // It reasons before answering, so keep the effort low to leave the answer inside its token budget.
     extra: { reasoning_effort: "low" }, reasoningTokens: 8000, jsonMode: true,
   },
+  // Same NAS gateway as hy4-preview, paid (x0.43 credit). It reasons before answering, so ask for the
+  // low effort: measured 6.7 s per production-length call against 15 s at the gateway default.
+  "step-5-preview": {
+    service: "step-5-preview", model: "cn:step-5-preview", baseUrlEnv: "HY4_BASE_URL", apiKeyEnv: "HY4_API_KEY",
+    extra: { reasoning_effort: "low" }, reasoningTokens: 8000, jsonMode: true, vision: true,
+  },
   "minimax-m3": {
     service: "minimax-m3", model: "MiniMax-M3.1-Flash-Preview", baseUrlEnv: "MINIMAX_M3_BASE_URL", apiKeyEnv: "MINIMAX_M3_API_KEY",
     // It reasons before answering, and the thinking block is billed against max_tokens: without room

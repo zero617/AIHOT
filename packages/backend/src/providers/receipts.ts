@@ -47,10 +47,18 @@ export class ProviderRejectedError extends Error {
 /**
  * The HTTP rule for every provider: an answer outside 2xx means the request was not taken. Rate limits
  * and server errors may pass; any other status is a refusal the same request would meet again.
+ *
+ * 403 is the exception worth naming: gateways use it for quota/entitlement refusals
+ * ("FreeTierError", "usage limit", "quota exceeded") that a *different* model on the same request
+ * would not meet. A content refusal still is a hard no (the fallback chain would meet it too), so
+ * only the entitlement flavours are retryable.
  */
+const ENTITLEMENT_403 = /freetier|free tier|quota|usage limit|insufficient|credit|billing|subscription|plan/i;
+
 export function assertAccepted(service: string, status: number, body: string): void {
   if (status >= 200 && status < 300) return;
-  throw new ProviderRejectedError(`${service} HTTP ${status}: ${body.slice(0, 500)}`, status, status === 429 || status >= 500);
+  const entitlement = status === 403 && ENTITLEMENT_403.test(body);
+  throw new ProviderRejectedError(`${service} HTTP ${status}: ${body.slice(0, 500)}`, status, status === 429 || status >= 500 || entitlement);
 }
 
 export interface CallOutcome {

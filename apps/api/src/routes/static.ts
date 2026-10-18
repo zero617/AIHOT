@@ -129,6 +129,23 @@ export function registerStatic(app: FastifyInstance) {
   app.get("/robots.txt", (req, reply) => sendFile(req, reply, path.join(PUBLIC, "robots.txt"), { cacheControl: "public, max-age=3600", fill: true }));
   app.get("/.well-known/security.txt", (req, reply) => sendFile(req, reply, path.join(PUBLIC, ".well-known/security.txt"), { cacheControl: "public, max-age=86400", fill: true }));
   app.get("/manifest.webmanifest", (req, reply) => sendFile(req, reply, path.join(PUBLIC, "manifest.webmanifest"), { cacheControl: "public, max-age=86400, stale-while-revalidate=604800", fill: true }));
+
+  // The service worker: served from the root so its scope covers the whole site (a worker's scope
+  // defaults to its own directory). Never cached, or a new worker would take up to its max-age to
+  // take over; Service-Worker-Allowed lets it claim "/" even if it is ever moved.
+  app.get("/sw.js", async (req, reply) => {
+    try {
+      const entry = await loadFile(path.join(PUBLIC, "sw.js"));
+      reply.header("Content-Type", "text/javascript; charset=utf-8");
+      reply.header("Cache-Control", "no-cache, must-revalidate");
+      reply.header("Service-Worker-Allowed", "/");
+      reply.header("ETag", entry.etag);
+      if (req.headers["if-none-match"] === entry.etag) return reply.code(304).send();
+      return reply.send(entry.body);
+    } catch {
+      return reply.code(404).type("text/plain; charset=utf-8").send("Not found");
+    }
+  });
   app.get("/openapi-v1.json", (req, reply) => sendFile(req, reply, path.join(PUBLIC, "openapi-v1.json"), { cacheControl: "public, max-age=300, must-revalidate", publicApi: true, fill: true }));
 
   // IndexNow proves the key by a file at the site root named after it (INDEXNOW_KEY).
